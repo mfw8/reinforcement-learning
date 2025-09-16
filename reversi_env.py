@@ -1,184 +1,133 @@
-import gymnasium as gym
-from gymnasium import spaces
+import pygame
 import numpy as np
 
-class OthelloEnv(gym.Env):
-    """
-    A custom Gymnasium environment for the game Othello (Reversi).
-    Board is 8x8, with values:
-      - 0 = empty cell
-      - 1 = black disc
-      - -1 = white disc
+# --- Settings ---
+BOARD_SIZE = 8
+CELL_SIZE = 80
+WIDTH, HEIGHT = CELL_SIZE * BOARD_SIZE, CELL_SIZE * BOARD_SIZE
+FPS = 30
 
-    Current player alternates between 1 (black) and -1 (white).
-    """
+# Colors
+GREEN = (0, 128, 0)
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GRAY = (200, 200, 200)
 
-    metadata = {"render_modes": ["human"], "render_fps": 4}
+# --- Game Logic ---
+def init_board():
+    board = np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.int8)
+    mid = BOARD_SIZE // 2
+    board[mid-1, mid-1] = -1
+    board[mid, mid] = -1
+    board[mid-1, mid] = 1
+    board[mid, mid-1] = 1
+    return board
 
-    def __init__(self, render_mode=None):
-        super().__init__()
-        self.size = 8  # standard Othello board size
-
-        # Observation space: the full board (8x8), values ∈ {-1, 0, 1}
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size, self.size), dtype=np.int8)
-
-        # Action space: choose a cell on the board (0 to 63)
-        self.action_space = spaces.Discrete(self.size * self.size)
-
-        self.board = None
-        self.current_player = 1  # 1 = black, -1 = white
-        self.reset()
-
-    def reset(self, *, seed=None, options=None):
-        """
-        Reset the environment to the initial Othello setup:
-        4 discs in the center in diagonal pattern.
-        """
-        super().reset(seed=seed)
-
-        # Initialize empty board
-        self.board = np.zeros((self.size, self.size), dtype=np.int8)
-        mid = self.size // 2
-        # Standard starting position
-        self.board[mid - 1, mid - 1] = -1
-        self.board[mid, mid] = -1
-        self.board[mid - 1, mid] = 1
-        self.board[mid, mid - 1] = 1
-
-        self.current_player = 1  # Black always starts
-
-        return self.board.copy(), {}
-
-    def step(self, action):
-        """
-        Take an action:
-        - action is an integer (0–63), mapped to board coordinates.
-        - if invalid move: penalize with -10 reward.
-        - otherwise: place disc, flip opponents, switch player.
-        - check if the game is over (no valid moves for either player).
-        """
-        row, col = divmod(action, self.size)
-
-        # If move invalid → return penalty
-        if not self.is_valid_move(row, col, self.current_player):
-            return self.board.copy(), -10, False, False, {"invalid": True}
-
-        # Apply move
-        self.place_disc(row, col, self.current_player)
-
-        # Switch player
-        self.current_player *= -1
-
-        # Check if game is over
-        if not self.has_valid_moves(1) and not self.has_valid_moves(-1):
-            done = True
-            reward = self.get_winner_reward()
-        else:
-            done = False
-            reward = 0
-
-        return self.board.copy(), reward, done, False, {}
-
-    def is_valid_move(self, row, col, player):
-        """
-        Check if placing a disc at (row, col) is a valid move for `player`.
-        Rule: must enclose at least one opponent disc in any direction.
-        """
-        if self.board[row, col] != 0:
-            return False
-
-        # 8 directions to check (orthogonal + diagonal)
-        directions = [(-1, -1), (-1, 0), (-1, 1),
-                      (0, -1),          (0, 1),
-                      (1, -1),  (1, 0), (1, 1)]
-
-        for dr, dc in directions:
-            r, c = row + dr, col + dc
-            found_opponent = False
-
-            while 0 <= r < self.size and 0 <= c < self.size:
-                if self.board[r, c] == -player:
-                    found_opponent = True
-                elif self.board[r, c] == player and found_opponent:
-                    return True
-                else:
-                    break
-                r += dr
-                c += dc
-
+def is_valid_move(board, row, col, player):
+    if board[row, col] != 0:
         return False
 
-    def place_disc(self, row, col, player):
-        """
-        Place a disc at (row, col) and flip opponent discs along valid lines.
-        """
-        self.board[row, col] = player
+    directions = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+    for dr, dc in directions:
+        r, c = row+dr, col+dc
+        found_opponent = False
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+            if board[r, c] == -player:
+                found_opponent = True
+            elif board[r, c] == player and found_opponent:
+                return True
+            else:
+                break
+            r += dr
+            c += dc
+    return False
 
-        # Check all directions for flips
-        directions = [(-1, -1), (-1, 0), (-1, 1),
-                      (0, -1),          (0, 1),
-                      (1, -1),  (1, 0), (1, 1)]
+def place_disc(board, row, col, player):
+    board[row, col] = player
+    directions = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+    for dr, dc in directions:
+        r, c = row+dr, col+dc
+        to_flip = []
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+            if board[r, c] == -player:
+                to_flip.append((r, c))
+            elif board[r, c] == player and to_flip:
+                for rr, cc in to_flip:
+                    board[rr, cc] = player
+                break
+            else:
+                break
+            r += dr
+            c += dc
 
-        for dr, dc in directions:
-            r, c = row + dr, col + dc
-            to_flip = []
+def has_valid_moves(board, player):
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if is_valid_move(board, r, c, player):
+                return True
+    return False
 
-            while 0 <= r < self.size and 0 <= c < self.size:
-                if self.board[r, c] == -player:
-                    to_flip.append((r, c))
-                elif self.board[r, c] == player and to_flip:
-                    # Flip captured discs
-                    for rr, cc in to_flip:
-                        self.board[rr, cc] = player
-                    break
-                else:
-                    break
-                r += dr
-                c += dc
+def count_discs(board):
+    blacks = np.sum(board == 1)
+    whites = np.sum(board == -1)
+    return blacks, whites
 
-    def has_valid_moves(self, player):
-        """Check if the given player has any valid moves left."""
-        for r in range(self.size):
-            for c in range(self.size):
-                if self.is_valid_move(r, c, player):
-                    return True
-        return False
+# --- Pygame Rendering ---
+def draw_board(screen, board):
+    screen.fill(GREEN)
 
-    def get_winner_reward(self):
-        """
-        Count discs and decide winner:
-        - Return +1 if current player's opponent wins
-        - Return -1 if current player loses
-        - Return 0 if tie
-        """
-        black_count = np.sum(self.board == 1)
-        white_count = np.sum(self.board == -1)
+    # Grid lines
+    for x in range(0, WIDTH, CELL_SIZE):
+        pygame.draw.line(screen, BLACK, (x, 0), (x, HEIGHT))
+    for y in range(0, HEIGHT, CELL_SIZE):
+        pygame.draw.line(screen, BLACK, (0, y), (WIDTH, y))
 
-        if black_count > white_count:
-            return 1 if self.current_player == -1 else -1
-        elif white_count > black_count:
-            return 1 if self.current_player == 1 else -1
-        else:
-            return 0
+    # Discs
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if board[r, c] == 1:  # Black
+                pygame.draw.circle(screen, BLACK, (c*CELL_SIZE+CELL_SIZE//2, r*CELL_SIZE+CELL_SIZE//2), CELL_SIZE//2 - 5)
+            elif board[r, c] == -1:  # White
+                pygame.draw.circle(screen, WHITE, (c*CELL_SIZE+CELL_SIZE//2, r*CELL_SIZE+CELL_SIZE//2), CELL_SIZE//2 - 5)
 
-    def render(self):
-        """Print the current board state in a human-readable format."""
-        print("Current player:", "Black" if self.current_player == 1 else "White")
-        for row in self.board:
-            print(" ".join(["." if x == 0 else ("B" if x == 1 else "W") for x in row]))
-        print()
+# --- Main Game Loop ---
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Othello - Click to Play")
+    clock = pygame.time.Clock()
 
+    board = init_board()
+    current_player = 1  # Black starts
+    running = True
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                x, y = event.pos
+                row, col = y // CELL_SIZE, x // CELL_SIZE
+                if is_valid_move(board, row, col, current_player):
+                    place_disc(board, row, col, current_player)
+                    current_player *= -1
+
+                    # Skip turn if opponent has no moves
+                    if not has_valid_moves(board, current_player):
+                        current_player *= -1
+
+                    # End game if no moves for both
+                    if not has_valid_moves(board, 1) and not has_valid_moves(board, -1):
+                        blacks, whites = count_discs(board)
+                        print("Game Over! Black:", blacks, "White:", whites)
+                        running = False
+
+        draw_board(screen, board)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    pygame.quit()
 
 if __name__ == "__main__":
-    # Example: run a short random-play game
-    env = OthelloEnv()
-    obs, _ = env.reset()
-    env.render()
-
-    for _ in range(10):
-        action = env.action_space.sample()
-        obs, reward, done, _, info = env.step(action)
-        env.render()
-        if done:
-            print("Game Over, reward:", reward)
-            break
+    main()

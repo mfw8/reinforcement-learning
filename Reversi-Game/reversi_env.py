@@ -25,6 +25,7 @@ GREEN = (0, 128, 0)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GRAY = (200, 200, 200)
+HIGHLIGHT = (255, 255, 100)
 
 # Score tracker
 total_scores = {"Black": 0, "White": 0}
@@ -59,10 +60,17 @@ def is_valid_move(board, row, col, player):
             c += dc
     return False
 
+def get_valid_moves(board, player):
+    """Returns a list of (row, col) tuples for all valid moves."""
+    valid = []
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if is_valid_move(board, r, c, player):
+                valid.append((r, c))
+    return valid
 
 def place_disc(board, row, col, player):
     board[row, col] = player
-    directions = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,0),(0,1),(1,-1),(1,0),(1,1)]
     directions = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
     for dr, dc in directions:
         r, c = row+dr, col+dc
@@ -132,7 +140,8 @@ class OthelloGymEnv(gym.Env):
         if done:
             blacks, whites = count_discs(self.board)
             if blacks > whites:
-                reward = 1.0
+                reward = 1.04
+                
             elif whites > blacks:
                 reward = -1.0
             else:
@@ -163,7 +172,7 @@ def train_agent(total_timesteps=20000):
     return model
 
 # --- Pygame Rendering ---
-def draw_board(screen, board):
+def draw_board(screen, board, valid_moves=None):
     screen.fill(GREEN)
 
     # Grid lines
@@ -180,6 +189,13 @@ def draw_board(screen, board):
             elif board[r, c] == -1:  # White
                 pygame.draw.circle(screen, WHITE, (c*CELL_SIZE+CELL_SIZE//2, r*CELL_SIZE+CELL_SIZE//2), CELL_SIZE//2 - 5)
 
+    if valid_moves:
+        for r, c in valid_moves:
+            center_x = c * CELL_SIZE + CELL_SIZE // 2
+            center_y = r * CELL_SIZE + CELL_SIZE // 2
+            # Draw a small circle to indicate valid move
+            pygame.draw.circle(screen, HIGHLIGHT, (center_x, center_y), 15, 3)
+    
     # Score tracker
     font = pygame.font.SysFont(None, 30)
     blacks, whites = count_discs(board)
@@ -278,6 +294,8 @@ def main():
         running = True
 
         while running:
+            valid_moves = get_valid_moves(board, current_player)
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -334,7 +352,7 @@ def main():
                 end_screen(screen, blacks, whites)
                 running = False
 
-            draw_board(screen, board)
+            draw_board(screen, board, valid_moves)
             pygame.display.flip()
             clock.tick(FPS)
 

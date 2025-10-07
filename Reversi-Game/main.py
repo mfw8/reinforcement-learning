@@ -37,17 +37,18 @@ def main():
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-                if event.type == pygame.MOUSEBUTTONDOWN and current_player == 1:
-                    x, y = event.pos
-                    if y < HEIGHT-60:
-                        r, c = y // CELL_SIZE, x // CELL_SIZE
-                        if is_valid_move(board, r, c, current_player):
-                            place_disc(board, r, c, current_player)
-                            current_player *= -1
-                            if not has_valid_moves(board, current_player):
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if current_player == 1 or (current_player == -1 and choice == '1'):
+                        x, y = event.pos
+                        if y < HEIGHT-60:
+                            r, c = y // CELL_SIZE, x // CELL_SIZE
+                            if is_valid_move(board, r, c, current_player):
+                                place_disc(board, r, c, current_player)
                                 current_player *= -1
+                                if not has_valid_moves(board, current_player):
+                                    current_player *= -1
 
-            if current_player == -1:
+            if current_player == -1 and choice in ['2', '3', '4']:
                 valid = get_valid_moves(board, current_player)
                 if not valid:
                     current_player *= -1

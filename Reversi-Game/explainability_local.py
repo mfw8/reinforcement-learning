@@ -72,7 +72,7 @@ Please provide:
 2. The BEST move to play and why
 3. Specific tips to improve {player_name}'s strategy
 
-Keep it concise and practical."""
+Keep it concise and practical. Do not use chess terminology."""
 
         payload = {
             "model": MODEL_NAME,

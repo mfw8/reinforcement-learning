@@ -19,11 +19,11 @@ def check_ollama():
     
     print("❌ Ollama not found!")
     print("\n📦 To use free local AI analysis:")
-    print("  1. Download Ollama from: https://ollama.ai")
+    print("  1. Download Ollama from: https://ollama.com")
     print("  2. Install and run it")
-    print("  3. In a terminal, run: ollama pull llama2")
-    print("  4. Ollama will start automatically on localhost:11434")
-    print("\n💡 Llama2 is free and runs on your computer!\n")
+    print("  3. In a terminal, run: ollama pull llama3.2:1b")
+    print("  4. Ollama will start automatically")
+    print("\n💡 This is a fast, small model (1.3GB) perfect for analysis!\n")
     return False
 
 def board_to_string(board):
@@ -60,28 +60,31 @@ def get_board_analysis(board, current_player):
         
         board_str = board_to_string(board)
         
-        prompt = f"""You are an expert Othello/Reversi strategist. Analyze this board position and provide advice.
+        prompt = f"""You are analyzing an OTHELLO (Reversi) game, NOT chess. In Othello, there are only BLACK discs (B) and WHITE discs (W) on an 8x8 board. Players flip opponent discs by sandwiching them.
 
 {board_str}
 
 Current Player: {player_name}
-Valid Moves: {valid_moves_str}
+Valid Moves (row,col): {valid_moves_str}
 
-Please provide:
-1. Brief analysis of the current board state (who is winning and why)
-2. The BEST move to play and why
-3. Specific tips to improve {player_name}'s strategy
+Analyze:
+1. Who is winning? Count the B and W discs.
+2. Best move for {player_name} and why?
+3. One strategic tip for Othello
 
-Keep it concise and practical. Do not use chess terminology."""
+Use ONLY Othello terminology (discs, flip, corners, edges). NO chess terms."""
 
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
             "temperature": 0.7,
+            "options": {
+                "num_predict": 300  # Limit response length for speed
+            }
         }
         
-        response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
         
         if response.status_code == 200:
             result = response.json()
@@ -117,28 +120,30 @@ def get_game_summary(board, blacks, whites):
         
         board_str = board_to_string(board)
         
-        prompt = f"""You are an expert Othello/Reversi strategist. Analyze this completed game.
+        prompt = f"""You are analyzing an OTHELLO (Reversi) game, NOT chess. Othello uses BLACK discs (B) and WHITE discs (W). Players flip opponent discs by sandwiching them between their own discs.
 
 {board_str}
 
-Final Result: {winner} wins by {margin} points (Black {blacks}, White {whites})
+Final Result: {winner} wins by {margin} discs (Black {blacks}, White {whites})
 
-Please provide:
-1. What the winner did well
-2. What the loser could have done better
-3. Three specific strategy tips for improving at Othello
-4. Common beginner mistakes to avoid
+Analyze:
+1. What did the winner do well? (Consider corners, edges, mobility)
+2. What could the loser improve?
+3. Two Othello strategy tips (corners, edges, mobility control)
 
-Keep it constructive and educational."""
+Use ONLY Othello terminology. NO chess terms like king, queen, checkmate."""
 
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
             "temperature": 0.7,
+            "options": {
+                "num_predict": 300
+            }
         }
         
-        response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
         
         if response.status_code == 200:
             result = response.json()
@@ -166,27 +171,27 @@ def get_move_explanation(board, move_row, move_col, player):
         
         board_str = board_to_string(board)
         
-        prompt = f"""You are an expert Othello/Reversi strategist. Evaluate this move.
+        prompt = f"""You are analyzing an OTHELLO (Reversi) game, NOT chess. Othello uses BLACK discs (B) and WHITE discs (W).
 
 {board_str}
 
-Move: {player_name} places a disc at position ({move_row}, {move_col})
+Move: {player_name} placed a disc at row {move_row}, column {move_col}
 
-Please analyze:
-1. Is this a strong move? Why or why not?
-2. What are the strategic implications?
-3. How does this compare to alternatives?
+Is this a strong Othello move? Explain briefly using Othello concepts (corners, edges, mobility, disc flipping).
 
-Be honest about whether this is a good or bad move. Keep it brief."""
+NO chess terminology."""
 
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
             "temperature": 0.7,
+            "options": {
+                "num_predict": 200
+            }
         }
         
-        response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
         
         if response.status_code == 200:
             result = response.json()

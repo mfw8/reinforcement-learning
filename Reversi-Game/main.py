@@ -4,6 +4,7 @@ from logic import *
 from ui import draw_board, end_screen, show_analysis
 from ai import train_agent, load_model
 from explainability_local import get_board_analysis, get_game_summary, check_ollama
+from heatmap import draw_heatmap_overlay
 
 def board_to_obs(board):
     return board.astype(np.float32)
@@ -26,11 +27,11 @@ def main():
     if choice == '1':
         print("Starting Human vs Human mode...")
         if has_api:
-            print("💡 Tip: Press 'H' during the game for FREE local AI analysis")
+            print("💡 Tip: Press 'H' for AI analysis | Press 'M' for move heatmap")
     elif choice == '2':
         print("Starting Human vs Random AI mode...")
         if has_api:
-            print("💡 Tip: Press 'H' during the game for FREE local AI analysis")
+            print("💡 Tip: Press 'H' for AI analysis | Press 'M' for move heatmap")
     elif choice == '3':
         print("Loading trained AI model...")
         model = load_model()
@@ -52,6 +53,8 @@ def main():
         board = init_board()
         current_player = 1
         running = True
+        heatmap_board_state = None  # Track board state when heatmap was generated
+        
         while running:
             valid_moves = get_valid_moves(board, current_player)
 
@@ -65,6 +68,13 @@ def main():
                         analysis = get_board_analysis(board, current_player)
                         show_analysis(screen, analysis)
                 
+                # Toggle heatmap (press 'M')
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                    if choice in ['1', '2']:
+                        # Generate heatmap for current board state
+                        heatmap_board_state = board.copy()
+                        print("🔥 Generating heatmap for current position...")
+                
                 # Handle mouse clicks for human players
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     # Player 1 (Black) always plays by clicking
@@ -76,6 +86,8 @@ def main():
                             if is_valid_move(board, r, c, current_player):
                                 place_disc(board, r, c, current_player)
                                 current_player *= -1
+                                # Clear heatmap after move is made
+                                heatmap_board_state = None
                                 if not has_valid_moves(board, current_player):
                                     current_player *= -1
 
@@ -123,6 +135,11 @@ def main():
                 running = False
 
             draw_board(screen, board, valid_moves)
+            
+            # Draw heatmap overlay if it was generated for this board state
+            if heatmap_board_state is not None and np.array_equal(board, heatmap_board_state):
+                draw_heatmap_overlay(screen, board, current_player)
+            
             pygame.display.flip()
             clock.tick(FPS)
 

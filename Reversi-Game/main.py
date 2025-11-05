@@ -4,7 +4,8 @@ from logic import *
 from ui import draw_board, end_screen, show_analysis
 from ai import train_agent, load_model
 from explainability_local import get_board_analysis, get_game_summary, check_ollama
-from heatmap import draw_heatmap_overlay
+from heatmap import generate_heatmap_surface
+from undo import MoveHistory, get_undo_analysis
 
 def board_to_obs(board):
     return board.astype(np.float32)
@@ -26,12 +27,10 @@ def main():
     model = None
     if choice == '1':
         print("Starting Human vs Human mode...")
-        if has_api:
-            print("💡 Tip: Press 'H' for AI analysis | Press 'M' for move heatmap")
+        print("💡 Tips: Press 'H' for AI analysis | 'M' for move heatmap | 'U' to undo & analyze")
     elif choice == '2':
         print("Starting Human vs Random AI mode...")
-        if has_api:
-            print("💡 Tip: Press 'H' for AI analysis | Press 'M' for move heatmap")
+        print("💡 Tips: Press 'H' for AI analysis | 'M' for move heatmap | 'U' to undo & analyze")
     elif choice == '3':
         print("Loading trained AI model...")
         model = load_model()
@@ -53,7 +52,9 @@ def main():
         board = init_board()
         current_player = 1
         running = True
-        heatmap_board_state = None  # Track board state when heatmap was generated
+        heatmap_surface = None  # Cached heatmap surface
+        heatmap_board_hash = None  # Hash of board state when heatmap was generated
+        move_history = MoveHistory()  # Track moves for undo
         
         while running:
             valid_moves = get_valid_moves(board, current_player)
@@ -68,12 +69,53 @@ def main():
                         analysis = get_board_analysis(board, current_player)
                         show_analysis(screen, analysis)
                 
+                # Undo move and get analysis (press 'U')
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_u:
+                    if choice in ['1', '2']:
+                        if move_history.can_undo():
+                            print("\n⏮️  Undoing last move...")
+                            
+                            # Get the move info before undoing
+                            board_after = board.copy()
+                            last_move = move_history.get_last_move()
+                            board_before, move_player, move_row, move_col = last_move
+                            
+                            # Undo the move
+                            board = board_before.copy()
+                            current_player = move_player  # Restore player turn
+                            move_history.undo()  # Remove from history
+                            
+                            # Clear heatmap
+                            heatmap_surface = None
+                            heatmap_board_hash = None
+                            
+                            # Analyze the undone move
+                            print("📊 Analyzing why this move was made...")
+                            analysis = get_undo_analysis(board_before, board_after, move_player, 
+                                                        move_row, move_col, use_ai=has_api)
+                            show_analysis(screen, analysis)
+                            
+                            print(f"✅ Undone! Back to {('Black' if current_player == 1 else 'White')}'s turn")
+                        else:
+                            print("❌ No moves to undo!")
+                    else:
+                        print("❌ Undo only available in Human vs Human or Human vs Random AI modes")
+                
                 # Toggle heatmap (press 'M')
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
                     if choice in ['1', '2']:
-                        # Generate heatmap for current board state
-                        heatmap_board_state = board.copy()
-                        print("🔥 Generating heatmap for current position...")
+                        # Generate heatmap for current board state ONCE
+                        current_hash = board.tobytes()
+                        if heatmap_board_hash != current_hash:
+                            print("🔥 Generating heatmap for current position...")
+                            heatmap_surface = generate_heatmap_surface(screen, board, current_player)
+                            heatmap_board_hash = current_hash
+                            print("✅ Heatmap ready!")
+                        else:
+                            # Toggle off if pressing M again on same board
+                            heatmap_surface = None
+                            heatmap_board_hash = None
+                            print("❌ Heatmap cleared")
                 
                 # Handle mouse clicks for human players
                 if event.type == pygame.MOUSEBUTTONDOWN:
@@ -84,10 +126,14 @@ def main():
                         if y < HEIGHT-60:
                             r, c = y // CELL_SIZE, x // CELL_SIZE
                             if is_valid_move(board, r, c, current_player):
+                                # Save move to history before making it
+                                move_history.add_move(board, current_player, r, c)
+                                
                                 place_disc(board, r, c, current_player)
                                 current_player *= -1
                                 # Clear heatmap after move is made
-                                heatmap_board_state = None
+                                heatmap_surface = None
+                                heatmap_board_hash = None
                                 if not has_valid_moves(board, current_player):
                                     current_player *= -1
 
@@ -136,9 +182,9 @@ def main():
 
             draw_board(screen, board, valid_moves)
             
-            # Draw heatmap overlay if it was generated for this board state
-            if heatmap_board_state is not None and np.array_equal(board, heatmap_board_state):
-                draw_heatmap_overlay(screen, board, current_player)
+            # Draw cached heatmap surface if it exists
+            if heatmap_surface is not None:
+                screen.blit(heatmap_surface, (0, 0))
             
             pygame.display.flip()
             clock.tick(FPS)

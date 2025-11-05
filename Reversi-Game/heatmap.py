@@ -2,87 +2,6 @@ import pygame
 import numpy as np
 from constants import *
 from logic import is_valid_move, place_disc, has_valid_moves, count_discs, get_valid_moves
-import requests
-import json
-
-def get_move_scores_from_ai(board, current_player, valid_moves):
-    """
-    Ask the AI to score each valid move from 1-10.
-    Returns a dictionary of {(row, col): score}
-    """
-    try:
-        from explainability_local import board_to_string, OLLAMA_URL, MODEL_NAME, TIMEOUT
-        
-        board_str = board_to_string(board)
-        player_name = "Black" if current_player == 1 else "White"
-        
-        moves_str = ", ".join([f"({r},{c})" for r, c in valid_moves])
-        
-        prompt = f"""You are an Othello expert. Rate each move from 1-10 (10=best).
-
-{board_str}
-
-Current Player: {player_name}
-Valid Moves: {moves_str}
-
-Rate EACH move on a scale of 1-10. Format your response EXACTLY like this:
-(row,col): score
-Example:
-(2,3): 8
-(4,5): 6
-(1,2): 4
-
-Rate ALL {len(valid_moves)} moves. Use ONLY this format, no extra text."""
-
-        payload = {
-            "model": MODEL_NAME,
-            "prompt": prompt,
-            "stream": False,
-            "temperature": 0.3,
-            "options": {
-                "num_predict": 200
-            }
-        }
-        
-        print(f"📊 Getting AI scores for {len(valid_moves)} moves...")
-        response = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
-        
-        if response.status_code == 200:
-            result = response.json()
-            text = result.get("response", "")
-            
-            # Parse the response
-            scores = {}
-            for line in text.split('\n'):
-                line = line.strip()
-                if '(' in line and ')' in line and ':' in line:
-                    try:
-                        # Extract (row,col): score
-                        coords_part = line.split(':')[0].strip()
-                        score_part = line.split(':')[1].strip()
-                        
-                        # Parse coordinates
-                        coords = coords_part.replace('(', '').replace(')', '').split(',')
-                        row = int(coords[0].strip())
-                        col = int(coords[1].strip())
-                        
-                        # Parse score
-                        score = float(score_part.split()[0])  # Get first number
-                        
-                        if (row, col) in valid_moves:
-                            scores[(row, col)] = score
-                    except:
-                        continue
-            
-            print(f"✅ Parsed {len(scores)} move scores")
-            return scores
-        else:
-            print(f"❌ AI request failed: {response.status_code}")
-            return None
-            
-    except Exception as e:
-        print(f"❌ Error getting move scores: {e}")
-        return None
 
 def calculate_heuristic_scores(board, current_player, valid_moves):
     """
@@ -133,22 +52,24 @@ def calculate_heuristic_scores(board, current_player, valid_moves):
     
     return scores
 
-def draw_heatmap_overlay(screen, board, current_player):
+def generate_heatmap_surface(screen, board, current_player):
     """
-    Draw a heatmap overlay showing move quality using heuristic scoring.
-    Green = good moves, Red = bad moves, Yellow = medium moves
+    Generate a heatmap overlay as a surface (called once, then cached).
+    Returns a pygame Surface that can be blitted onto the screen.
     """
     valid_moves = get_valid_moves(board, current_player)
     
     if not valid_moves:
-        return
+        return None
+    
+    # Create a transparent surface
+    heatmap_surface = pygame.Surface((WIDTH, HEIGHT - 60), pygame.SRCALPHA)
     
     # Get move scores using heuristic (no AI)
-    print("📊 Calculating heuristic move scores...")
     scores = calculate_heuristic_scores(board, current_player, valid_moves)
     
     if not scores:
-        return
+        return None
     
     # Normalize scores to 0-1 range
     score_values = list(scores.values())
@@ -156,34 +77,28 @@ def draw_heatmap_overlay(screen, board, current_player):
     max_score = max(score_values)
     score_range = max_score - min_score if max_score > min_score else 1
     
-    # Draw heatmap
+    # Draw heatmap onto surface
     for (row, col), score in scores.items():
         # Normalize score
         normalized = (score - min_score) / score_range
         
         # Color gradient: Red (bad) -> Yellow (medium) -> Green (good)
         if normalized < 0.5:
-            # Red to Yellow
             r = 255
             g = int(255 * (normalized * 2))
             b = 0
         else:
-            # Yellow to Green
             r = int(255 * (1 - (normalized - 0.5) * 2))
             g = 255
             b = 0
         
-        color = (r, g, b)
+        color = (r, g, b, 120)  # Add alpha channel
         
         # Draw semi-transparent rectangle
         x = col * CELL_SIZE
         y = row * CELL_SIZE
         
-        # Create surface with alpha
-        overlay = pygame.Surface((CELL_SIZE, CELL_SIZE))
-        overlay.set_alpha(120)  # Semi-transparent
-        overlay.fill(color)
-        screen.blit(overlay, (x, y))
+        pygame.draw.rect(heatmap_surface, color, (x, y, CELL_SIZE, CELL_SIZE))
         
         # Draw score text
         font = pygame.font.SysFont(None, 28, bold=True)
@@ -192,26 +107,26 @@ def draw_heatmap_overlay(screen, board, current_player):
         
         # White background for text readability
         bg_rect = text_rect.inflate(10, 6)
-        pygame.draw.rect(screen, WHITE, bg_rect, border_radius=4)
-        pygame.draw.rect(screen, BLACK, bg_rect, width=2, border_radius=4)
+        pygame.draw.rect(heatmap_surface, WHITE, bg_rect, border_radius=4)
+        pygame.draw.rect(heatmap_surface, BLACK, bg_rect, width=2, border_radius=4)
         
-        screen.blit(score_text, text_rect)
+        heatmap_surface.blit(score_text, text_rect)
     
-    # Draw legend
-    draw_legend(screen)
+    # Draw legend on the heatmap surface
+    draw_legend_on_surface(heatmap_surface)
     
-    print(f"✅ Heatmap generated for {len(scores)} moves")
+    return heatmap_surface
 
-def draw_legend(screen):
-    """Draw a color legend for the heatmap."""
+def draw_legend_on_surface(surface):
+    """Draw a color legend for the heatmap on a surface."""
     legend_x = 10
-    legend_y = HEIGHT - 100
+    legend_y = HEIGHT - 160  # Adjust for surface size
     legend_width = 200
     legend_height = 30
     
     # Background
-    pygame.draw.rect(screen, WHITE, (legend_x - 5, legend_y - 5, legend_width + 10, legend_height + 40), border_radius=5)
-    pygame.draw.rect(screen, BLACK, (legend_x - 5, legend_y - 5, legend_width + 10, legend_height + 40), width=2, border_radius=5)
+    pygame.draw.rect(surface, WHITE, (legend_x - 5, legend_y - 5, legend_width + 10, legend_height + 40), border_radius=5)
+    pygame.draw.rect(surface, BLACK, (legend_x - 5, legend_y - 5, legend_width + 10, legend_height + 40), width=2, border_radius=5)
     
     # Gradient bar
     for i in range(legend_width):
@@ -224,11 +139,11 @@ def draw_legend(screen):
             r = int(255 * (1 - (normalized - 0.5) * 2))
             g = 255
             b = 0
-        pygame.draw.line(screen, (r, g, b), (legend_x + i, legend_y), (legend_x + i, legend_y + legend_height))
+        pygame.draw.line(surface, (r, g, b), (legend_x + i, legend_y), (legend_x + i, legend_y + legend_height))
     
     # Labels
     font = pygame.font.SysFont(None, 20, bold=True)
     bad_text = font.render("Bad", True, BLACK)
     good_text = font.render("Good", True, BLACK)
-    screen.blit(bad_text, (legend_x, legend_y + legend_height + 5))
-    screen.blit(good_text, (legend_x + legend_width - 35, legend_y + legend_height + 5))
+    surface.blit(bad_text, (legend_x, legend_y + legend_height + 5))
+    surface.blit(good_text, (legend_x + legend_width - 35, legend_y + legend_height + 5))

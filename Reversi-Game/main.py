@@ -3,9 +3,19 @@ from constants import *
 from logic import *
 from ui import draw_board, end_screen, show_analysis
 from ai import train_agent, load_model
-from explainability_local import get_board_analysis, get_game_summary, check_ollama
 from heatmap import generate_heatmap_surface
-from undo import MoveHistory, get_undo_analysis
+from undo import MoveHistory
+
+# Try to import DSPy version, fallback to regular version
+try:
+    from explainability_dspy import get_board_analysis, get_game_summary, get_move_evaluation, check_dspy
+    USE_DSPY = True
+    print("🚀 Using DSPy-optimized explainability!")
+except ImportError:
+    from explainability_local import get_board_analysis, get_game_summary, check_ollama
+    from undo import get_undo_analysis as get_move_evaluation
+    USE_DSPY = False
+    print("📝 Using standard explainability (install dspy-ai for optimization)")
 
 def board_to_obs(board):
     return board.astype(np.float32)

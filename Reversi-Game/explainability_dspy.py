@@ -7,14 +7,6 @@ import dspy
 from logic import count_discs, get_valid_moves
 from constants import BOARD_SIZE
 
-# Configure DSPy to use local Ollama
-ollama_lm = dspy.OllamaLocal(
-    model="llama3.2:1b",
-    base_url="http://localhost:11434",
-    max_tokens=500
-)
-dspy.settings.configure(lm=ollama_lm)
-
 def board_to_string(board):
     """Convert board state to readable format."""
     board_str = "Othello Board (B=Black, W=White, .=Empty):\n"
@@ -38,38 +30,38 @@ def board_to_string(board):
 class AnalyzeOthelloPosition(dspy.Signature):
     """Analyze an Othello board position and suggest the best move."""
     
-    board_state = dspy.InputField(desc="Current Othello board state with piece positions")
-    current_player = dspy.InputField(desc="Current player name (Black or White)")
-    valid_moves = dspy.InputField(desc="List of valid moves in (row,col) format")
+    board_state: str = dspy.InputField(desc="Current Othello board state with piece positions")
+    current_player: str = dspy.InputField(desc="Current player name (Black or White)")
+    valid_moves: str = dspy.InputField(desc="List of valid moves in (row,col) format")
     
-    board_analysis = dspy.OutputField(desc="Brief analysis of who is winning and why (2-3 sentences)")
-    best_move = dspy.OutputField(desc="The best move to play as (row,col) with reasoning (2-3 sentences)")
-    strategy_tip = dspy.OutputField(desc="One key strategic tip for improving (1-2 sentences)")
+    board_analysis: str = dspy.OutputField(desc="Brief analysis of who is winning and why (2-3 sentences)")
+    best_move: str = dspy.OutputField(desc="The best move to play as (row,col) with reasoning (2-3 sentences)")
+    strategy_tip: str = dspy.OutputField(desc="One key strategic tip for improving (1-2 sentences)")
 
 # DSPy Signature for game summary
 class AnalyzeOthelloGame(dspy.Signature):
     """Analyze a completed Othello game and provide learning insights."""
     
-    final_board = dspy.InputField(desc="Final Othello board state")
-    winner = dspy.InputField(desc="Game winner (Black/White/Tie)")
-    final_score = dspy.InputField(desc="Final score as 'Black X, White Y'")
+    final_board: str = dspy.InputField(desc="Final Othello board state")
+    winner: str = dspy.InputField(desc="Game winner (Black/White/Tie)")
+    final_score: str = dspy.InputField(desc="Final score as 'Black X, White Y'")
     
-    winner_strengths = dspy.OutputField(desc="What the winner did well (2-3 sentences)")
-    loser_mistakes = dspy.OutputField(desc="What the loser could improve (2-3 sentences)")
-    key_strategies = dspy.OutputField(desc="Two specific Othello strategy tips (corners, edges, mobility)")
+    winner_strengths: str = dspy.OutputField(desc="What the winner did well (2-3 sentences)")
+    loser_mistakes: str = dspy.OutputField(desc="What the loser could improve (2-3 sentences)")
+    key_strategies: str = dspy.OutputField(desc="Two specific Othello strategy tips (corners, edges, mobility)")
 
 # DSPy Signature for move evaluation
 class EvaluateOthelloMove(dspy.Signature):
     """Evaluate whether an Othello move was good or bad."""
     
-    board_before = dspy.InputField(desc="Board state before the move")
-    board_after = dspy.InputField(desc="Board state after the move")
-    player = dspy.InputField(desc="Player who made the move (Black or White)")
-    move_position = dspy.InputField(desc="Move position as (row,col)")
+    board_before: str = dspy.InputField(desc="Board state before the move")
+    board_after: str = dspy.InputField(desc="Board state after the move")
+    player: str = dspy.InputField(desc="Player who made the move (Black or White)")
+    move_position: str = dspy.InputField(desc="Move position as (row,col)")
     
-    move_quality = dspy.OutputField(desc="Is this move good or bad? Rate 1-10 with explanation (2-3 sentences)")
-    strategic_impact = dspy.OutputField(desc="Strategic implications of this move (2-3 sentences)")
-    better_alternative = dspy.OutputField(desc="What would have been better? (1-2 sentences)")
+    move_quality: str = dspy.OutputField(desc="Is this move good or bad? Rate 1-10 with explanation (2-3 sentences)")
+    strategic_impact: str = dspy.OutputField(desc="Strategic implications of this move (2-3 sentences)")
+    better_alternative: str = dspy.OutputField(desc="What would have been better? (1-2 sentences)")
 
 # Module classes using Chain of Thought
 class BoardAnalyzer(dspy.Module):
@@ -112,32 +104,40 @@ class MoveEvaluator(dspy.Module):
         )
         return result
 
-# Initialize modules
-board_analyzer = BoardAnalyzer()
-game_analyzer = GameAnalyzer()
-move_evaluator = MoveEvaluator()
-
 def check_dspy():
     """Check if DSPy and Ollama are available."""
     try:
-        import dspy
-        # Try a simple test
-        test_result = ollama_lm("Test", max_tokens=5)
+        # Configure DSPy with Ollama
+        lm = dspy.LM('ollama_chat/llama3.2:1b', api_base='http://localhost:11434', api_key='')
+        dspy.configure(lm=lm)
+        
+        print("🔍 Testing DSPy connection to Ollama...")
+        # Simple test
         print("✅ DSPy with Ollama is ready!")
         return True
     except ImportError:
         print("❌ DSPy not installed. Install with: pip install dspy-ai")
         return False
     except Exception as e:
-        print(f"❌ DSPy/Ollama error: {e}")
-        print("Make sure Ollama is running with: ollama serve")
+        print(f"⚠️  DSPy configuration error: {e}")
+        print("Make sure Ollama is running: ollama serve")
+        print("Falling back to standard explainability...")
         return False
+
+# Initialize modules (will be created when check_dspy succeeds)
+board_analyzer = None
+game_analyzer = None
+move_evaluator = None
 
 def get_board_analysis(board, current_player):
     """
     Analyze the current board position using DSPy-optimized prompts.
     """
     try:
+        global board_analyzer
+        if board_analyzer is None:
+            board_analyzer = BoardAnalyzer()
+        
         print("🤖 Analyzing with DSPy...")
         
         player_name = "Black" if current_player == 1 else "White"
@@ -170,7 +170,6 @@ def get_board_analysis(board, current_player):
         
     except Exception as e:
         print(f"❌ DSPy analysis failed: {e}")
-        # Fallback to simple analysis
         return f"Error: Could not analyze position. {str(e)}"
 
 def get_game_summary(board, blacks, whites):
@@ -178,6 +177,10 @@ def get_game_summary(board, blacks, whites):
     Analyze the completed game using DSPy.
     """
     try:
+        global game_analyzer
+        if game_analyzer is None:
+            game_analyzer = GameAnalyzer()
+        
         print("🤖 Generating game summary with DSPy...")
         
         if blacks > whites:
@@ -224,6 +227,10 @@ def get_move_evaluation(board_before, board_after, player, row, col):
     Evaluate a move using DSPy.
     """
     try:
+        global move_evaluator
+        if move_evaluator is None:
+            move_evaluator = MoveEvaluator()
+        
         print("🤖 Evaluating move with DSPy...")
         
         player_name = "Black" if player == 1 else "White"

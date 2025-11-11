@@ -7,22 +7,32 @@ from heatmap import generate_heatmap_surface
 from undo import MoveHistory
 
 # Try to import DSPy version, fallback to regular version
+USE_DSPY = False
 try:
     from explainability_dspy import get_board_analysis, get_game_summary, get_move_evaluation, check_dspy
-    USE_DSPY = True
-    print("🚀 Using DSPy-optimized explainability!")
-except ImportError:
+    # Test if DSPy actually works
+    if check_dspy():
+        USE_DSPY = True
+        print("🚀 Using DSPy-optimized explainability!")
+    else:
+        raise ImportError("DSPy check failed")
+except (ImportError, Exception) as e:
+    print(f"📝 Using standard explainability: {e}")
     from explainability_local import get_board_analysis, get_game_summary, check_ollama
-    from undo import get_undo_analysis as get_move_evaluation
-    USE_DSPY = False
-    print("📝 Using standard explainability (install dspy-ai for optimization)")
+    from undo import get_undo_analysis as get_move_evaluation_fallback
+    
+    def check_api_key():
+        return check_ollama()
 
 def board_to_obs(board):
     return board.astype(np.float32)
 
 def check_api_key():
-    """Check if Ollama is running for free local AI analysis."""
-    return check_ollama()
+    """Check if Ollama/DSPy is running for AI analysis."""
+    if USE_DSPY:
+        return check_dspy()
+    else:
+        return check_ollama()
 
 def main():
     print("Explainable RL Othello - options:")
@@ -101,8 +111,12 @@ def main():
                             
                             # Analyze the undone move
                             print("📊 Analyzing why this move was made...")
-                            analysis = get_undo_analysis(board_before, board_after, move_player, 
-                                                        move_row, move_col, use_ai=has_api)
+                            if USE_DSPY:
+                                analysis = get_move_evaluation(board_before, board_after, move_player, move_row, move_col)
+                            else:
+                                from undo import get_undo_analysis
+                                analysis = get_undo_analysis(board_before, board_after, move_player, 
+                                                            move_row, move_col, use_ai=has_api)
                             show_analysis(screen, analysis)
                             
                             print(f"✅ Undone! Back to {('Black' if current_player == 1 else 'White')}'s turn")

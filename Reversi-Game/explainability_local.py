@@ -27,23 +27,74 @@ def check_ollama():
     return False
 
 def board_to_string(board):
-    """Convert board state to readable format for the model."""
-    board_str = "Othello Board State:\n"
-    board_str += "  0 1 2 3 4 5 6 7\n"
+    """Convert board state to readable format with enhanced visual clarity."""
+    board_str = "OTHELLO BOARD (8x8 grid):\n"
+    board_str += "    0   1   2   3   4   5   6   7  (COLUMNS)\n"
+    board_str += "  +---+---+---+---+---+---+---+---+\n"
+
     for r in range(BOARD_SIZE):
-        board_str += f"{r} "
+        board_str += f"{r} |"  # Row number
         for c in range(BOARD_SIZE):
             if board[r, c] == 1:
-                board_str += "B "  # Black
+                board_str += " B |"  # Black disc
             elif board[r, c] == -1:
-                board_str += "W "  # White
+                board_str += " W |"  # White disc
             else:
-                board_str += ". "
-        board_str += "\n"
-    
+                board_str += " . |"  # Empty square
+
+        # Add position annotations for key rows
+        if r == 0:
+            board_str += " <- Top edge"
+        elif r == 7:
+            board_str += " <- Bottom edge"
+        board_str += "\n  +---+---+---+---+---+---+---+---+\n"
+
+    board_str += "(ROWS)\n\n"
+
+    # Add strategic annotations
+    board_str += "LEGEND:\n"
+    board_str += "  B = Black disc\n"
+    board_str += "  W = White disc\n"
+    board_str += "  . = Empty square\n"
+    board_str += "  Corners (most valuable): (0,0), (0,7), (7,0), (7,7)\n"
+    board_str += "  Edges: Row 0, Row 7, Column 0, Column 7\n\n"
+
     blacks, whites = count_discs(board)
-    board_str += f"\nScore: Black {blacks} - White {whites}\n"
+    board_str += f"DISC COUNT: Black={blacks} discs, White={whites} discs\n"
+
     return board_str
+
+def format_valid_moves_with_context(board, valid_moves, current_player):
+    """Format valid moves with flip counts and strategic value indicators."""
+    import numpy as np
+    from logic import place_disc
+
+    if not valid_moves:
+        return "No valid moves available (must pass turn).\n"
+
+    moves_str = "VALID MOVES (with analysis):\n"
+
+    for i, (r, c) in enumerate(valid_moves, 1):
+        # Simulate the move to count flips
+        test_board = np.copy(board)
+        place_disc(test_board, r, c, current_player)
+        flips = np.sum(test_board != board) - 1  # -1 for the placed disc itself
+
+        # Determine position type for strategic context
+        is_corner = (r, c) in [(0, 0), (0, 7), (7, 0), (7, 7)]
+        is_edge = (r == 0 or r == 7 or c == 0 or c == 7) and not is_corner
+
+        if is_corner:
+            position_type = "CORNER (best - permanent)"
+        elif is_edge:
+            position_type = "EDGE (good - stable)"
+        else:
+            position_type = "INTERIOR (neutral)"
+
+        moves_str += f"  {i}. Row={r}, Col={c} -> Flips {flips} disc(s) [{position_type}]\n"
+
+    moves_str += "\nCoordinate format: (Row, Column) where Row 0=top, Column 0=left\n"
+    return moves_str
 
 def get_board_analysis(board, current_player):
     """
@@ -52,35 +103,42 @@ def get_board_analysis(board, current_player):
     """
     try:
         print("📡 Calling local Ollama model...")
-        
+
         player_name = "Black" if current_player == 1 else "White"
-        
+
         valid_moves = get_valid_moves(board, current_player)
-        valid_moves_str = ", ".join([f"({r},{c})" for r, c in valid_moves])
-        
+
         board_str = board_to_string(board)
-        
-        prompt = f"""You are analyzing an OTHELLO (Reversi) game, NOT chess. In Othello, there are only BLACK discs (B) and WHITE discs (W) on an 8x8 board. Players flip opponent discs by sandwiching them.
+        moves_str = format_valid_moves_with_context(board, valid_moves, current_player)
+
+        prompt = f"""You are analyzing an OTHELLO game. This is NOT chess.
 
 {board_str}
 
-Current Player: {player_name}
-Valid Moves (row,col): {valid_moves_str}
+CURRENT TURN: {player_name} to move
 
-Analyze:
-1. Who is winning? Count the B and W discs.
-2. Best move for {player_name} and why?
-3. One strategic tip for Othello
+{moves_str}
 
-Use ONLY Othello terminology (discs, flip, corners, edges). NO chess terms."""
+TASK: First, verify you understand the board by stating how many Black and White discs you count. Then recommend the BEST move from the valid moves listed above.
+
+Explain your choice in 2-3 sentences using Othello concepts:
+- Corner control (corners are permanent and cannot be flipped)
+- Edge stability (edges are harder to flip)
+- Mobility (keeping move options open)
+- Disc flipping count (immediate tactical gain)
+
+Required format:
+"I count [X] Black and [Y] White discs. Move Row=R, Col=C is best because [reason]."
+
+Do NOT use chess terminology. Use only Othello/Reversi concepts."""
 
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
-            "temperature": 0.7,
+            "temperature": 0.3,
             "options": {
-                "num_predict": 300  # Limit response length for speed
+                "num_predict": 400  # Slightly increased for verification step
             }
         }
         
@@ -107,7 +165,7 @@ def get_game_summary(board, blacks, whites):
     """
     try:
         print("📡 Calling local Ollama model for game summary...")
-        
+
         if blacks > whites:
             winner = "Black"
             margin = blacks - whites
@@ -117,29 +175,34 @@ def get_game_summary(board, blacks, whites):
         else:
             winner = "Tie"
             margin = 0
-        
+
         board_str = board_to_string(board)
-        
-        prompt = f"""You are analyzing an OTHELLO (Reversi) game, NOT chess. Othello uses BLACK discs (B) and WHITE discs (W). Players flip opponent discs by sandwiching them between their own discs.
+
+        prompt = f"""You are analyzing the final state of an OTHELLO game. This is NOT chess.
 
 {board_str}
 
-Final Result: {winner} wins by {margin} discs (Black {blacks}, White {whites})
+GAME RESULT: {winner} wins by {margin} discs (Black={blacks}, White={whites})
 
-Analyze:
-1. What did the winner do well? (Consider corners, edges, mobility)
-2. What could the loser improve?
-3. Two Othello strategy tips (corners, edges, mobility control)
+TASK: Analyze this final board position and explain what determined the outcome.
 
-Use ONLY Othello terminology. NO chess terms like king, queen, checkmate."""
+In 3-4 sentences, discuss:
+1. Which corners/edges were captured and their impact
+2. One key strategic advantage the winner achieved
+3. One Othello tip based on this game
+
+Use only Othello concepts (corners, edges, mobility, stability, disc flipping).
+NO chess terminology.
+
+Keep your analysis focused on the visible board state above."""
 
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
-            "temperature": 0.7,
+            "temperature": 0.3,
             "options": {
-                "num_predict": 300
+                "num_predict": 350
             }
         }
         
@@ -166,28 +229,48 @@ def get_move_explanation(board, move_row, move_col, player):
     """
     try:
         print("📡 Calling local Ollama model...")
-        
+
         player_name = "Black" if player == 1 else "White"
-        
+
         board_str = board_to_string(board)
-        
-        prompt = f"""You are analyzing an OTHELLO (Reversi) game, NOT chess. Othello uses BLACK discs (B) and WHITE discs (W).
+
+        # Determine position type for context
+        is_corner = (move_row, move_col) in [(0, 0), (0, 7), (7, 0), (7, 7)]
+        is_edge = (move_row == 0 or move_row == 7 or move_col == 0 or move_col == 7) and not is_corner
+
+        if is_corner:
+            position_hint = "This is a CORNER position (best strategic value)."
+        elif is_edge:
+            position_hint = "This is an EDGE position (good strategic value)."
+        else:
+            position_hint = "This is an INTERIOR position."
+
+        prompt = f"""You are analyzing an OTHELLO game. This is NOT chess.
 
 {board_str}
 
-Move: {player_name} placed a disc at row {move_row}, column {move_col}
+MOVE MADE: {player_name} placed a disc at Row={move_row}, Column={move_col}
+{position_hint}
 
-Is this a strong Othello move? Explain briefly using Othello concepts (corners, edges, mobility, disc flipping).
+TASK: Evaluate this move's strength in 2-3 sentences.
 
-NO chess terminology."""
+Consider these Othello factors:
+- Position value (corner > edge > interior)
+- How many discs were flipped
+- Whether it maintains mobility or opens dangerous moves for opponent
+- Whether it secures stable discs
+
+Format: "This move is [strong/weak/moderate] because [reason]."
+
+Use only Othello terminology. NO chess terms."""
 
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
-            "temperature": 0.7,
+            "temperature": 0.3,
             "options": {
-                "num_predict": 200
+                "num_predict": 250
             }
         }
         

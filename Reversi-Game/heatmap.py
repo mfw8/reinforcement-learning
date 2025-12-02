@@ -58,12 +58,12 @@ def generate_heatmap_surface(screen, board, current_player):
     Returns a pygame Surface that can be blitted onto the screen.
     """
     valid_moves = get_valid_moves(board, current_player)
-    
+
     if not valid_moves:
         return None
-    
-    # Create a transparent surface
-    heatmap_surface = pygame.Surface((WIDTH, HEIGHT - 60), pygame.SRCALPHA)
+
+    # Create a transparent surface matching the full window size
+    heatmap_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     
     # Get move scores using heuristic (no AI)
     scores = calculate_heuristic_scores(board, current_player, valid_moves)
@@ -77,11 +77,12 @@ def generate_heatmap_surface(screen, board, current_player):
     max_score = max(score_values)
     score_range = max_score - min_score if max_score > min_score else 1
     
-    # Draw heatmap onto surface
+    # Draw heatmap onto surface (with board offset)
+    BOARD_OFFSET = 40  # Account for row/column labels
     for (row, col), score in scores.items():
         # Normalize score
         normalized = (score - min_score) / score_range
-        
+
         # Color gradient: Red (bad) -> Yellow (medium) -> Green (good)
         if normalized < 0.5:
             r = 255
@@ -91,25 +92,25 @@ def generate_heatmap_surface(screen, board, current_player):
             r = int(255 * (1 - (normalized - 0.5) * 2))
             g = 255
             b = 0
-        
+
         color = (r, g, b, 120)  # Add alpha channel
-        
-        # Draw semi-transparent rectangle
-        x = col * CELL_SIZE
-        y = row * CELL_SIZE
-        
+
+        # Draw semi-transparent rectangle (with offset)
+        x = BOARD_OFFSET + col * CELL_SIZE
+        y = BOARD_OFFSET + row * CELL_SIZE
+
         pygame.draw.rect(heatmap_surface, color, (x, y, CELL_SIZE, CELL_SIZE))
-        
+
         # Draw score text
         font = pygame.font.SysFont(None, 28, bold=True)
         score_text = font.render(f"{score:.1f}", True, BLACK)
         text_rect = score_text.get_rect(center=(x + CELL_SIZE//2, y + CELL_SIZE//2))
-        
+
         # White background for text readability
         bg_rect = text_rect.inflate(10, 6)
         pygame.draw.rect(heatmap_surface, WHITE, bg_rect, border_radius=4)
         pygame.draw.rect(heatmap_surface, BLACK, bg_rect, width=2, border_radius=4)
-        
+
         heatmap_surface.blit(score_text, text_rect)
     
     # Draw legend on the heatmap surface
@@ -119,8 +120,8 @@ def generate_heatmap_surface(screen, board, current_player):
 
 def draw_legend_on_surface(surface):
     """Draw a color legend for the heatmap on a surface."""
-    legend_x = 10
-    legend_y = HEIGHT - 160  # Adjust for surface size
+    legend_x = 50
+    legend_y = HEIGHT - 90  # Position at bottom, above score display
     legend_width = 200
     legend_height = 30
     

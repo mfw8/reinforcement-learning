@@ -75,50 +75,57 @@ def main():
         heatmap_surface = None  # Cached heatmap surface
         heatmap_board_hash = None  # Hash of board state when heatmap was generated
         move_history = MoveHistory()  # Track moves for undo
-        
+        analysis_text = None  # Store current analysis for sidebar display
+
         while running:
             valid_moves = get_valid_moves(board, current_player)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-                
+
+                # Clear analysis sidebar (press 'Q')
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    if analysis_text is not None:
+                        analysis_text = None
+                        print("❌ Analysis cleared")
+
                 # Handle help request (press 'H')
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_h:
                     if has_api and choice in ['1', '2']:
                         print("\n🤖 Analyzing board position...")
-                        analysis = get_board_analysis(board, current_player)
-                        show_analysis(screen, analysis)
+                        analysis_text = get_board_analysis(board, current_player)
+                    else:
+                        print("❌ AI analysis not available")
                 
                 # Undo move and get analysis (press 'U')
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_u:
                     if choice in ['1', '2']:
                         if move_history.can_undo():
                             print("\n⏮️  Undoing last move...")
-                            
+
                             # Get the move info before undoing
                             board_after = board.copy()
                             last_move = move_history.get_last_move()
                             board_before, move_player, move_row, move_col = last_move
-                            
+
                             # Undo the move
                             board = board_before.copy()
                             current_player = move_player  # Restore player turn
                             move_history.undo()  # Remove from history
-                            
+
                             # Clear heatmap
                             heatmap_surface = None
                             heatmap_board_hash = None
-                            
+
                             # Analyze the undone move
                             print("📊 Analyzing why this move was made...")
                             if USE_DSPY:
-                                analysis = get_move_evaluation(board_before, board_after, move_player, move_row, move_col)
+                                analysis_text = get_move_evaluation(board_before, board_after, move_player, move_row, move_col)
                             else:
                                 from undo import get_undo_analysis
-                                analysis = get_undo_analysis(board_before, board_after, move_player, 
+                                analysis_text = get_undo_analysis(board_before, board_after, move_player,
                                                             move_row, move_col, use_ai=has_api)
-                            show_analysis(screen, analysis)
-                            
+
                             print(f"✅ Undone! Back to {('Black' if current_player == 1 else 'White')}'s turn")
                         else:
                             print("❌ No moves to undo!")
@@ -147,12 +154,16 @@ def main():
                     # Player 2 (White) only plays by clicking in Human vs Human mode
                     if current_player == 1 or (current_player == -1 and choice == '1'):
                         x, y = event.pos
-                        if y < HEIGHT-60:
-                            r, c = y // CELL_SIZE, x // CELL_SIZE
+                        BOARD_OFFSET = 40  # Account for row/column labels
+                        # Check if click is within board area
+                        if (BOARD_OFFSET <= x < BOARD_OFFSET + CELL_SIZE * BOARD_SIZE and
+                            BOARD_OFFSET <= y < BOARD_OFFSET + CELL_SIZE * BOARD_SIZE):
+                            r = (y - BOARD_OFFSET) // CELL_SIZE
+                            c = (x - BOARD_OFFSET) // CELL_SIZE
                             if is_valid_move(board, r, c, current_player):
                                 # Save move to history before making it
                                 move_history.add_move(board, current_player, r, c)
-                                
+
                                 place_disc(board, r, c, current_player)
                                 current_player *= -1
                                 # Clear heatmap after move is made
@@ -194,17 +205,16 @@ def main():
 
             if not has_valid_moves(board, 1) and not has_valid_moves(board, -1):
                 b, w = count_discs(board)
-                
+
                 # Show game summary if API is available
                 if has_api and choice in ['1', '2']:
                     print("\n🎮 Game Over! Generating analysis...")
-                    summary = get_game_summary(board, b, w)
-                    show_analysis(screen, summary)
-                
+                    analysis_text = get_game_summary(board, b, w)
+
                 end_screen(screen, b, w)
                 running = False
 
-            draw_board(screen, board, valid_moves)
+            draw_board(screen, board, valid_moves, analysis_text)
             
             # Draw cached heatmap surface if it exists
             if heatmap_surface is not None:

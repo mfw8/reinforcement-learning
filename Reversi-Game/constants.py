@@ -1,7 +1,10 @@
 # --- Settings ---
 BOARD_SIZE = 8
 CELL_SIZE = 80
-WIDTH, HEIGHT = CELL_SIZE * BOARD_SIZE, CELL_SIZE * BOARD_SIZE + 60
+BOARD_WIDTH = CELL_SIZE * BOARD_SIZE + 40  # Added 40px for row/column labels
+SIDEBAR_WIDTH = 400  # Width for analysis sidebar
+WIDTH = BOARD_WIDTH + SIDEBAR_WIDTH
+HEIGHT = CELL_SIZE * BOARD_SIZE + 100  # Increased bottom panel for labels
 FPS = 30
 MODEL_PATH = "othello_ppo.zip"
 
